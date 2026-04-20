@@ -1,5 +1,16 @@
+# Capacitor
+node_modules/
+www/
+ios/App/Pods/
+ios/.DS_Store
+android/.gradle/
+android/build/
+android/app/build/
+assets/
+
+# Logs
+*.log
 launch.log
 tunnel.log
 current-url.txt
-*.log
 .DS_Store

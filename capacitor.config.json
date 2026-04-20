@@ -1,0 +1,22 @@
+{
+  "appId": "com.galzir.commandcenter",
+  "appName": "מרכז פיקוד",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https",
+    "allowNavigation": ["relay.peer.ooo"]
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1000,
+      "backgroundColor": "#F2F2F7",
+      "showSpinner": false
+    }
+  },
+  "ios": {
+    "contentInset": "always"
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}
