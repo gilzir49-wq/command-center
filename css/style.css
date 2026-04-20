@@ -273,66 +273,190 @@ html, body {
   color: white;
 }
 
-/* ===== Finance ===== */
-.finance-summary {
+/* ===== Finance (redesigned) ===== */
+.fin-period-bar {
   display: flex;
-  gap: 10px;
-  margin-bottom: 12px;
+  gap: 8px;
+  padding: 12px 0 0;
 }
-
-.fin-box {
+.fin-period-btn {
   flex: 1;
+  padding: 7px;
+  border: 1.5px solid var(--sep);
+  border-radius: 20px;
   background: var(--bg-card);
-  border-radius: var(--radius);
-  padding: 14px;
-  text-align: center;
-  box-shadow: 0 1px 4px var(--shadow);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-2);
+  cursor: pointer;
 }
-
-.fin-amount {
-  font-size: 20px;
+.fin-period-btn.active {
+  background: var(--c-finance);
+  color: #fff;
+  border-color: var(--c-finance);
   font-weight: 700;
+}
+
+.fin-tab-bar {
+  display: flex;
+  gap: 6px;
+  padding: 10px 0 12px;
+}
+.fin-tab-btn {
+  flex: 1;
+  padding: 9px 4px;
+  border: none;
+  border-radius: 12px;
+  background: var(--bg-card);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-2);
+  cursor: pointer;
+  box-shadow: 0 1px 3px var(--shadow);
+}
+.fin-tab-btn.active {
+  background: var(--c-finance);
+  color: #fff;
+  font-weight: 700;
+}
+
+.fin-hero {
+  text-align: center;
+  padding: 16px 20px 20px;
+}
+.fin-hero-amount {
+  font-size: 48px;
+  font-weight: 800;
   direction: ltr;
-  display: block;
+  letter-spacing: -2px;
+  color: var(--text);
 }
-
-.fin-label {
-  font-size: 12px;
+.fin-hero-label {
+  font-size: 15px;
   color: var(--text-3);
-  margin-top: 3px;
+  margin-top: 2px;
+}
+.fin-hero-mini {
+  display: flex;
+  justify-content: center;
+  gap: 18px;
+  margin-top: 12px;
+  font-size: 14px;
 }
 
+.fin-circles-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  justify-items: center;
+}
+.fin-cat-circle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.fin-donut-wrap {
+  position: relative;
+  width: 72px;
+  height: 72px;
+}
+.fin-donut-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 26px;
+  line-height: 1;
+}
+.fin-cat-name {
+  font-size: 12px;
+  font-weight: 500;
+  margin-top: 5px;
+  text-align: center;
+  color: var(--text-2);
+}
+.fin-cat-spent {
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  direction: ltr;
+  line-height: 1.3;
+}
+.fin-cat-spent small {
+  font-size: 10px;
+  font-weight: 400;
+  display: block;
+  color: var(--text-3);
+}
+
+.fin-total-banner {
+  margin: 0 16px 12px;
+  border-radius: var(--radius);
+  padding: 18px 22px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.15);
+}
+.fin-total-label { font-size: 16px; font-weight: 600; }
+.fin-total-num   { font-size: 28px; font-weight: 800; direction: ltr; }
+
+/* Transaction row */
 .fin-item {
   display: flex;
   align-items: center;
-  padding: 11px 0;
+  padding: 12px 0;
   border-bottom: 1px solid var(--sep);
   gap: 12px;
 }
-
 .fin-item:last-child { border-bottom: none; }
-
 .fin-icon {
-  width: 38px;
-  height: 38px;
-  border-radius: 10px;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 18px;
   flex-shrink: 0;
 }
-
 .fin-info { flex: 1; min-width: 0; }
 .fin-name { font-size: 15px; font-weight: 500; }
-.fin-date { font-size: 12px; color: var(--text-3); margin-top: 1px; }
-
-.fin-right { text-align: left; flex-shrink: 0; }
-.fin-amount-val { font-size: 16px; font-weight: 600; direction: ltr; display: block; }
-.fin-status { font-size: 11px; color: var(--text-3); }
+.fin-date { font-size: 12px; color: var(--text-3); margin-top: 2px; }
 
 .amount-expense { color: #FF3B30; }
 .amount-income  { color: #34C759; }
+
+/* Category picker in add modal */
+.fin-cat-pick-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 7px;
+  max-height: 210px;
+  overflow-y: auto;
+}
+.fin-cat-pick {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 9px 4px 7px;
+  border: 1.5px solid var(--sep);
+  border-radius: 12px;
+  background: var(--bg-card);
+  font-size: 11px;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: border-color .15s;
+}
+.fin-cat-pick.sel {
+  border-color: var(--c-finance);
+  background: #34C75912;
+  color: var(--c-finance);
+  font-weight: 600;
+}
 
 /* ===== Leads ===== */
 .lead-item {

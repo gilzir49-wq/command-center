@@ -6,6 +6,8 @@ const State = {
   brainCat: 'business',
   leadFilter: 'all',
   familyCat: 'tasks',
+  finTab: 'summary',
+  finPeriod: 'month',
 };
 
 // ── Date Helpers ───────────────────────────────────────
@@ -196,73 +198,254 @@ function renderBrain(el) {
 }
 
 // ── FINANCE ────────────────────────────────────────────
+const FIN_EXP_CATS = [
+  { id: 'food_out',   emoji: '🍔', name: 'אוכל בחוץ' },
+  { id: 'coffee',     emoji: '☕', name: 'קפה' },
+  { id: 'transport',  emoji: '🚗', name: 'תחבורה' },
+  { id: 'grocery',    emoji: '🛒', name: 'סופר' },
+  { id: 'clothes',    emoji: '👕', name: 'בגדים' },
+  { id: 'health',     emoji: '🏥', name: 'בריאות' },
+  { id: 'fun',        emoji: '🎭', name: 'שונות' },
+  { id: 'pets',       emoji: '🐕', name: 'בעלי חיים' },
+  { id: 'holidays',   emoji: '🎊', name: 'חגים' },
+  { id: 'care',       emoji: '💆', name: 'טיפוח' },
+  { id: 'superfarma', emoji: '💊', name: 'סופר פארם' },
+  { id: 'business',   emoji: '💼', name: 'עסק' },
+  { id: 'crossfit',   emoji: '🏋️', name: 'CrossFit' },
+  { id: 'home',       emoji: '🏠', name: 'בית' },
+  { id: 'personal',   emoji: '🙋', name: 'אישי' },
+];
+
+const FIN_INC_CATS = [
+  { id: 'crossfit_inc', emoji: '🏋️', name: 'CrossFit BUX' },
+  { id: 'print_inc',    emoji: '🖨️', name: 'בית דפוס' },
+  { id: 'salary',       emoji: '💰', name: 'משכורת' },
+  { id: 'other_inc',    emoji: '📈', name: 'אחר' },
+];
+
+function finCatById(id) {
+  return FIN_EXP_CATS.find(c => c.id === id)
+      || FIN_INC_CATS.find(c => c.id === id)
+      || { emoji: '💳', name: id || 'כללי' };
+}
+
+function getFinPeriodData(all, period) {
+  const now = new Date();
+  if (period === 'week') {
+    const weekAgo = new Date(now - 7*24*60*60*1000).toISOString().split('T')[0];
+    return all.filter(f => f.date >= weekAgo);
+  }
+  const month = now.toISOString().slice(0,7);
+  return all.filter(f => f.date && f.date.startsWith(month));
+}
+
 function renderFinance(el) {
-  const all      = DB.get('finance');
-  const month    = new Date().toISOString().slice(0,7);
-  const monthly  = all.filter(f => f.date && f.date.startsWith(month));
-  const income   = monthly.filter(f => f.type==='income').reduce((s,f) => s+f.amount, 0);
-  const expense  = monthly.filter(f => f.type==='expense').reduce((s,f) => s+f.amount, 0);
-  const unpaid   = all.filter(f => !f.isPaid);
+  const tab    = State.finTab    || 'summary';
+  const period = State.finPeriod || 'month';
 
   el.innerHTML = `
-    <div class="sec-header"><div class="sec-title">כספים</div></div>
-
-    <div class="finance-summary">
-      <div class="fin-box">
-        <span class="fin-amount amount-income">₪${income.toLocaleString('he-IL')}</span>
-        <div class="fin-label">הכנסות החודש</div>
+    <div style="padding:0 16px 0">
+      <div class="fin-period-bar">
+        <button class="fin-period-btn ${period==='week'?'active':''}"
+          onclick="State.finPeriod='week'; renderPage('finance')">השבוע</button>
+        <button class="fin-period-btn ${period==='month'?'active':''}"
+          onclick="State.finPeriod='month'; renderPage('finance')">החודש</button>
       </div>
-      <div class="fin-box">
-        <span class="fin-amount amount-expense">₪${expense.toLocaleString('he-IL')}</span>
-        <div class="fin-label">הוצאות החודש</div>
+      <div class="fin-tab-bar">
+        <button class="fin-tab-btn ${tab==='summary'?'active':''}"
+          onclick="State.finTab='summary'; renderPage('finance')">📊 סיכום</button>
+        <button class="fin-tab-btn ${tab==='expenses'?'active':''}"
+          onclick="State.finTab='expenses'; renderPage('finance')">💸 הוצאות</button>
+        <button class="fin-tab-btn ${tab==='income'?'active':''}"
+          onclick="State.finTab='income'; renderPage('finance')">💵 הכנסות</button>
+      </div>
+    </div>
+    <div id="fin-body"></div>
+  `;
+
+  const body     = document.getElementById('fin-body');
+  const all      = DB.get('finance');
+  const filtered = getFinPeriodData(all, period);
+
+  if (tab === 'summary')       renderFinSummary(body, filtered, period);
+  else if (tab === 'expenses') renderFinTransactions(body, filtered.filter(f => f.type==='expense'), 'expense');
+  else                         renderFinTransactions(body, filtered.filter(f => f.type==='income'),  'income');
+}
+
+function renderFinSummary(el, data, period) {
+  const budgets = DB.getObj('fin_budgets', {});
+  const expenses = data.filter(f => f.type === 'expense');
+  const incomes  = data.filter(f => f.type === 'income');
+  const totalExp = expenses.reduce((s,f) => s+f.amount, 0);
+  const totalInc = incomes.reduce((s,f)  => s+f.amount, 0);
+  const balance  = totalInc - totalExp;
+
+  // Group expenses by category
+  const byCat = {};
+  expenses.forEach(f => {
+    const cat = f.category || 'personal';
+    byCat[cat] = (byCat[cat] || 0) + f.amount;
+  });
+
+  const circ = 188.5;
+  const catCircles = Object.entries(byCat).map(([catId, spent]) => {
+    const cat    = finCatById(catId);
+    const budget = budgets[catId] || 0;
+    const pct    = budget > 0 ? spent / budget : 0;
+    const color  = budget === 0 ? '#007AFF'
+                 : pct < 0.5   ? '#34C759'
+                 : pct < 0.8   ? '#FF9500' : '#FF3B30';
+    const dash   = budget > 0 ? Math.min(pct, 1) * circ : circ * 0.25;
+    return `
+      <div class="fin-cat-circle" onclick="openBudgetEdit('${catId}')">
+        <div class="fin-donut-wrap">
+          <svg width="72" height="72" viewBox="0 0 72 72">
+            <circle cx="36" cy="36" r="30" fill="none" stroke="#E5E5EA" stroke-width="7"/>
+            <circle cx="36" cy="36" r="30" fill="none" stroke="${color}" stroke-width="7"
+              stroke-dasharray="${dash} ${circ}" stroke-linecap="round"
+              transform="rotate(-90 36 36)"/>
+          </svg>
+          <div class="fin-donut-center">${cat.emoji}</div>
+        </div>
+        <div class="fin-cat-name">${cat.name}</div>
+        <div class="fin-cat-spent" style="color:${color}">₪${spent.toLocaleString('he-IL')}${budget ? `<br><small>מתוך ₪${budget.toLocaleString('he-IL')}</small>` : ''}</div>
+      </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="fin-hero">
+      <div class="fin-hero-amount">₪${totalExp.toLocaleString('he-IL')}</div>
+      <div class="fin-hero-label">הוצאות ה${period==='week'?'שבוע':'חודש'}</div>
+      <div class="fin-hero-mini">
+        <span style="color:#34C759">+₪${totalInc.toLocaleString('he-IL')} הכנסות</span>
+        <span style="color:${balance>=0?'#34C759':'#FF3B30'};font-weight:600">${balance>=0?'+':''}₪${balance.toLocaleString('he-IL')} מאזן</span>
       </div>
     </div>
 
-    ${unpaid.length ? `
-    <div class="card">
-      <div class="card-label">⚠️ ממתינים לתשלום (${unpaid.length})</div>
-      ${unpaid.map(f => finItemHTML(f, true, true)).join('')}
-    </div>` : ''}
+    ${catCircles ? `
+    <div class="card" style="margin:0 16px 12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div class="card-label" style="margin:0">המטרות שלנו 🎯</div>
+        <button onclick="openBudgetManager()" style="background:none;border:none;font-size:13px;color:var(--c-finance);font-weight:600;cursor:pointer">✏️ ערוך תקציב</button>
+      </div>
+      <div class="fin-circles-grid">${catCircles}</div>
+    </div>` : `
+    <div class="card" style="margin:0 16px 12px;text-align:center;padding:24px 20px">
+      <div style="font-size:32px;margin-bottom:8px">💰</div>
+      <div style="color:var(--text-3);font-size:14px">הוסף הוצאות כדי לראות את הסיכום</div>
+    </div>`}
 
-    <div class="card">
-      <div class="card-label">כל העסקאות</div>
-      ${all.length
-        ? all.map(f => finItemHTML(f, true, false)).join('')
-        : emptyHTML('💰', 'אין עסקאות עדיין')}
+    ${expenses.length ? `
+    <div class="card" style="margin:0 16px 16px">
+      <div class="card-label">הוצאות אחרונות</div>
+      ${expenses.slice(0,5).map(f => finRowHTML(f, false)).join('')}
+    </div>` : ''}
+  `;
+}
+
+function renderFinTransactions(el, list, type) {
+  const total = list.reduce((s,f) => s+f.amount, 0);
+  const isExp = type === 'expense';
+  const color = isExp ? '#FF3B30' : '#34C759';
+
+  el.innerHTML = `
+    <div class="fin-total-banner" style="background:${color}">
+      <span class="fin-total-label">${isExp ? 'סה"כ הוצאות' : 'סה"כ הכנסות'}</span>
+      <span class="fin-total-num">₪${total.toLocaleString('he-IL')}</span>
+    </div>
+    <div class="card" style="margin:0 16px 16px">
+      ${list.length
+        ? list.map(f => finRowHTML(f, true)).join('')
+        : emptyHTML(isExp ? '💸' : '💵', isExp ? 'אין הוצאות בתקופה זו' : 'אין הכנסות בתקופה זו')}
     </div>
   `;
 }
 
-function finItemHTML(f, showMark = false, showShare = false) {
+function finRowHTML(f, showDelete = false) {
+  const cat   = finCatById(f.category);
   const isExp = f.type === 'expense';
-  const bg = isExp ? '#FF3B3012' : '#34C75912';
-  const icon = isExp ? '💸' : '💵';
+  const bg    = isExp ? '#FF3B3015' : '#34C75915';
+  const amtCl = isExp ? '#FF3B30'   : '#34C759';
   return `
     <div class="fin-item">
-      <div class="fin-icon" style="background:${bg}">${icon}</div>
+      <div class="fin-icon" style="background:${bg};font-size:20px">${cat.emoji}</div>
       <div class="fin-info">
         <div class="fin-name">${esc(f.description)}</div>
-        <div class="fin-date">${shortDate(f.date)}${f.category ? ' · ' + catLabel(f.category) : ''}</div>
+        <div class="fin-date">${cat.name} · ${shortDate(f.date)}</div>
       </div>
-      <div class="fin-right">
-        <span class="fin-amount-val ${isExp?'amount-expense':'amount-income'}">
-          ${isExp?'−':'+'}₪${f.amount.toLocaleString('he-IL')}
-        </span>
-        ${showMark ? `<div class="fin-status">
-          ${f.isPaid
-            ? '<span style="color:var(--c-finance)">✓ שולם</span>'
-            : `<button class="pay-btn" onclick="markPaid('${f.id}')">סמן כשולם</button>`}
-        </div>` : ''}
+      <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+        <span style="font-size:16px;font-weight:700;color:${amtCl};direction:ltr">${isExp?'−':'+'}₪${f.amount.toLocaleString('he-IL')}</span>
+        ${showDelete ? `<button onclick="deleteFinance('${f.id}')" style="background:none;border:none;color:#FF3B30;font-size:18px;cursor:pointer;padding:4px;line-height:1">🗑</button>` : ''}
       </div>
-      ${showShare ? `<button class="action-mini" onclick="shareFinance('${f.id}')">📤</button>` : ''}
-    </div>
-  `;
+    </div>`;
+}
+
+// Legacy wrapper used on home page
+function finItemHTML(f) {
+  return finRowHTML(f, false);
+}
+
+function deleteFinance(id) {
+  if (!confirm('למחוק את העסקה?')) return;
+  DB.remove('finance', id);
+  renderPage(State.page);
+  showToast('🗑 נמחק');
 }
 
 function markPaid(id) {
   DB.update('finance', id, { isPaid: true });
   renderPage(State.page);
   showToast('✅ סומן כשולם');
+}
+
+function openBudgetManager() {
+  const budgets = DB.getObj('fin_budgets', {});
+  const rows = FIN_EXP_CATS.map(cat => `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+      <span style="font-size:22px;width:32px;text-align:center">${cat.emoji}</span>
+      <span style="flex:1;font-size:14px">${cat.name}</span>
+      <input type="number" inputmode="numeric" dir="ltr"
+        style="width:90px;padding:7px;border:1.5px solid var(--sep);border-radius:8px;font-size:14px;text-align:center;background:var(--bg)"
+        placeholder="ללא" value="${budgets[cat.id] || ''}"
+        onchange="updateBudget('${cat.id}',this.value)">
+    </div>`).join('');
+  openModal(`
+    <div class="modal-title">🎯 תקציב חודשי לקטגוריות</div>
+    <p style="font-size:13px;color:var(--text-3);margin-bottom:16px">הכנס סכום חודשי לכל קטגוריה (ריק = ללא מגבלה)</p>
+    <div style="max-height:55vh;overflow-y:auto">${rows}</div>
+    <button class="btn-primary" style="margin-top:16px" onclick="closeModal();renderPage('finance')">✅ סגור ושמור</button>
+  `);
+}
+
+function updateBudget(catId, val) {
+  const budgets = DB.getObj('fin_budgets', {});
+  const n = parseFloat(val);
+  if (n > 0) budgets[catId] = n; else delete budgets[catId];
+  localStorage.setItem('fin_budgets', JSON.stringify(budgets));
+}
+
+function openBudgetEdit(catId) {
+  const budgets = DB.getObj('fin_budgets', {});
+  const cat = finCatById(catId);
+  openModal(`
+    <div class="modal-title">${cat.emoji} ${cat.name}</div>
+    <div class="form-group">
+      <label class="form-label">תקציב חודשי (₪)</label>
+      <input class="form-input" id="budget-input" type="number" inputmode="numeric"
+        dir="ltr" placeholder="0 = ללא מגבלה" value="${budgets[catId] || ''}">
+    </div>
+    <button class="btn-primary" onclick="saveBudgetEdit('${catId}')">שמור</button>
+  `);
+  setTimeout(() => document.getElementById('budget-input')?.focus(), 150);
+}
+
+function saveBudgetEdit(catId) {
+  const val = parseFloat(document.getElementById('budget-input').value);
+  const budgets = DB.getObj('fin_budgets', {});
+  if (val > 0) budgets[catId] = val; else delete budgets[catId];
+  localStorage.setItem('fin_budgets', JSON.stringify(budgets));
+  closeModal();
+  renderPage('finance');
 }
 
 // ── CROSSFIT ───────────────────────────────────────────
@@ -750,55 +933,55 @@ function saveTask() {
 
 // ── Add Finance Form ───────────────────────────────────
 function openAddFinance() {
+  const defaultType = (State.finTab === 'income') ? 'income' : 'expense';
   openModal(`
     <div class="modal-title">💳 עסקה חדשה</div>
+    <div class="chip-row" id="fin-type-chips" style="margin-bottom:16px">
+      <button class="chip ${defaultType==='expense'?'sel':''}"
+        onclick="selectChip('fin-type-chips',this);renderFinCatPicker()" data-val="expense">💸 הוצאה</button>
+      <button class="chip ${defaultType==='income'?'sel':''}"
+        onclick="selectChip('fin-type-chips',this);renderFinCatPicker()" data-val="income">💵 הכנסה</button>
+    </div>
     <div class="form-group">
       <label class="form-label">תיאור</label>
-      <input class="form-input" id="fin-desc" placeholder="שם ההוצאה / הכנסה">
+      <input class="form-input" id="fin-desc" placeholder="לדוגמה: קפה בוקר">
     </div>
-    <div class="form-row">
-      <div class="form-group">
-        <label class="form-label">סכום (₪)</label>
-        <input class="form-input" id="fin-amount" type="number" placeholder="0" dir="ltr" inputmode="decimal">
-      </div>
-      <div class="form-group">
-        <label class="form-label">סוג</label>
-        <select class="form-select" id="fin-type">
-          <option value="expense">💸 הוצאה</option>
-          <option value="income">💵 הכנסה</option>
-        </select>
-      </div>
+    <div class="form-group">
+      <label class="form-label">סכום (₪)</label>
+      <input class="form-input" id="fin-amount" type="number" inputmode="decimal" placeholder="0" dir="ltr">
     </div>
     <div class="form-group">
       <label class="form-label">קטגוריה</label>
-      <div class="chip-row" id="fin-cat-chips">
-        ${[['business','💼 עסק'],['crossfit','🏋️ CrossFit'],['home','🏠 בית'],['personal','🙋 אישי']].map(([k,l]) =>
-          `<button class="chip ${k==='business'?'sel':''}" onclick="selectChip('fin-cat-chips',this)" data-val="${k}">${l}</button>`
-        ).join('')}
-      </div>
+      <div id="fin-cat-picker" class="fin-cat-pick-grid"></div>
     </div>
-    <div class="form-group">
-      <label class="form-label">שולם?</label>
-      <div class="chip-row" id="paid-chips">
-        <button class="chip sel" onclick="selectChip('paid-chips',this)" data-val="yes">✅ כן</button>
-        <button class="chip" onclick="selectChip('paid-chips',this)" data-val="no">⏳ לא</button>
-      </div>
-    </div>
-    <button class="btn-primary" onclick="saveFinance()">שמור</button>
+    <button class="btn-primary" onclick="saveFinance()">שמור ✅</button>
   `);
-  setTimeout(() => document.getElementById('fin-desc')?.focus(), 150);
+  setTimeout(() => { renderFinCatPicker(); document.getElementById('fin-desc')?.focus(); }, 120);
+}
+
+function renderFinCatPicker() {
+  const type = document.querySelector('#fin-type-chips .sel')?.dataset.val || 'expense';
+  const cats = type === 'expense' ? FIN_EXP_CATS : FIN_INC_CATS;
+  const grid = document.getElementById('fin-cat-picker');
+  if (!grid) return;
+  grid.innerHTML = cats.map((c, i) => `
+    <button class="fin-cat-pick ${i===0?'sel':''}" data-val="${c.id}"
+      onclick="document.querySelectorAll('.fin-cat-pick').forEach(b=>b.classList.remove('sel'));this.classList.add('sel')">
+      <span style="font-size:22px">${c.emoji}</span>
+      <span>${c.name}</span>
+    </button>`).join('');
 }
 
 function saveFinance() {
   const desc   = document.getElementById('fin-desc').value.trim();
   const amount = parseFloat(document.getElementById('fin-amount').value);
   if (!desc || !amount) { showToast('נא למלא תיאור וסכום'); return; }
-  const type     = document.getElementById('fin-type').value;
-  const category = document.querySelector('#fin-cat-chips .sel')?.dataset.val || 'business';
-  const isPaid   = document.querySelector('#paid-chips .sel')?.dataset.val === 'yes';
-  DB.add('finance', { description: desc, amount, type, category, date: todayStr(), isPaid });
+  const type     = document.querySelector('#fin-type-chips .sel')?.dataset.val || 'expense';
+  const category = document.querySelector('.fin-cat-pick.sel')?.dataset.val || (type==='expense' ? 'personal' : 'other_inc');
+  DB.add('finance', { description: desc, amount, type, category, date: todayStr(), isPaid: true });
   closeModal();
   renderPage('finance');
+  showToast('✅ נשמר!');
 }
 
 // ── Add CrossFit Form ──────────────────────────────────
