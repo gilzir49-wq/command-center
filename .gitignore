@@ -1,0 +1,5 @@
+launch.log
+tunnel.log
+current-url.txt
+*.log
+.DS_Store

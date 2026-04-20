@@ -1,0 +1,30 @@
+{
+  "name": "מרכז פיקוד | גל",
+  "short_name": "מרכז פיקוד",
+  "description": "מרכז פיקוד אישי — משימות, כספים, CrossFit ומשפחה",
+  "start_url": "/command-center/",
+  "display": "standalone",
+  "background_color": "#F2F2F7",
+  "theme_color": "#007AFF",
+  "orientation": "portrait",
+  "lang": "he",
+  "dir": "rtl",
+  "icons": [
+    {
+      "src": "icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
