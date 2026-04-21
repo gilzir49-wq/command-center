@@ -320,23 +320,18 @@ const PRIORITY_CFG = {
 
 function getTodayTasks(allTasks) {
   const today = todayStr();
-  const seen  = new Set();
-  const result = [];
-  // Due today or overdue
-  allTasks.filter(t => !t.done && t.dueDate && t.dueDate <= today)
-    .forEach(t => { seen.add(t.id); result.push(t); });
-  // High priority (not already included)
-  allTasks.filter(t => !t.done && t.priority === 'high' && !seen.has(t.id))
-    .forEach(t => result.push(t));
-  return result.sort((a,b) => {
-    const pa = a.priority === 'high' ? 0 : 1;
-    const pb = b.priority === 'high' ? 0 : 1;
-    if (pa !== pb) return pa - pb;
-    if (a.dueDate && b.dueDate) return a.dueDate.localeCompare(b.dueDate);
-    if (a.dueDate) return -1;
-    if (b.dueDate) return 1;
-    return 0;
-  });
+  return allTasks
+    .filter(t => !t.done && (
+      (t.dueDate && t.dueDate <= today) ||          // פגה תוקף / היום
+      (t.priority === 'high' && !t.dueDate)         // דחוף ללא תאריך
+    ))
+    .sort((a,b) => {
+      const po = { high:0, medium:1, low:2 };
+      if (a.dueDate && b.dueDate) return a.dueDate.localeCompare(b.dueDate);
+      if (a.dueDate) return -1;
+      if (b.dueDate) return 1;
+      return (po[a.priority]??3) - (po[b.priority]??3);
+    });
 }
 
 function renderBrain(el) {
