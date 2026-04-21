@@ -1,84 +1,61 @@
-/* ===== Cloud Sync — GunDB (zero setup, peer-to-peer) ===== */
+/* ===== Cloud Sync — Firebase Firestore ===== */
 
-const GUN_RELAYS = ['https://relay.peer.ooo/gun'];
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyAC6oiLElA2CbosGkUDM5rJsq7q3DuMzpM",
+  authDomain: "command-center-gal.firebaseapp.com",
+  projectId: "command-center-gal",
+  storageBucket: "command-center-gal.firebasestorage.app",
+  messagingSenderId: "982162335406",
+  appId: "1:982162335406:web:8cbdfc8ef332fcd2742f3f"
+};
 
-let _gun = null;
-let _root = null;
-let _listening = false;
-let _rdTimer = null;
+let _db = null;
+let _wsCode = null;
+let _unsubscribers = [];
 
 // ── Workspace code ─────────────────────────────────────
 function getWsCode() {
+  if (_wsCode) return _wsCode;
   let code = localStorage.getItem('_wsCode');
   if (!code) {
     const r = () => Math.random().toString(36).slice(2, 5).toUpperCase();
     code = r() + '-' + r();
     localStorage.setItem('_wsCode', code);
   }
+  _wsCode = code;
   return code;
 }
 
-// ── Init Gun ───────────────────────────────────────────
+// ── Init Firebase ──────────────────────────────────────
 function initCloud() {
   try {
-    _gun  = new Gun({ peers: GUN_RELAYS, localStorage: false });
-    _root = _gun.get('cmd-bux-' + getWsCode());
+    if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+    _db = firebase.firestore();
+    // Offline persistence — data survives no-internet
+    _db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
     startListeners();
     updateSyncIcon('🟢');
   } catch (e) {
-    console.warn('GunDB init failed — offline mode', e);
+    console.warn('Firebase init failed — offline mode', e);
     updateSyncIcon('🟡');
   }
 }
 
-// ── Debounced render ───────────────────────────────────
-function scheduleRender() {
-  clearTimeout(_rdTimer);
-  _rdTimer = setTimeout(() => {
-    if (typeof renderPage === 'function' && typeof State !== 'undefined') {
-      renderPage(State.page);
-    }
-  }, 350);
+// ── Collection ref under workspace ────────────────────
+function colRef(col) {
+  return _db.collection('workspaces').doc(getWsCode()).collection(col);
 }
 
-// ── Helpers ────────────────────────────────────────────
-function toGun(obj) {
-  // Gun doesn't like null/arrays/nested objects — flatten them
-  const out = {};
-  for (const [k, v] of Object.entries(obj)) {
-    if (k === '_') continue;
-    if (v === null || v === undefined) out[k] = '__null__';
-    else if (typeof v === 'boolean') out[k] = v;
-    else if (typeof v === 'number')  out[k] = v;
-    else if (typeof v === 'object')  out[k] = JSON.stringify(v);
-    else out[k] = v;
-  }
-  return out;
-}
-
-function fromGun(data) {
-  if (!data) return null;
-  const out = {};
-  for (const [k, v] of Object.entries(data)) {
-    if (k === '_') continue;
-    if (v === '__null__') out[k] = null;
-    else if (typeof v === 'string' && (v.startsWith('{') || v.startsWith('['))) {
-      try { out[k] = JSON.parse(v); } catch { out[k] = v; }
-    } else {
-      out[k] = v;
-    }
-  }
-  return out;
-}
-
+// ── Write item to Firestore ────────────────────────────
 function cloudWrite(col, item) {
-  if (!_root) return;
-  _root.get(col).get(item.id).put(toGun(item));
+  if (!_db || !item?.id) return;
+  colRef(col).doc(item.id).set(item, { merge: true }).catch(console.error);
 }
 
+// ── Delete item from Firestore ─────────────────────────
 function cloudDelete(col, id) {
-  if (!_root) return;
-  _root.get(col).get(id).put({ id, _deleted: true });
+  if (!_db) return;
+  colRef(col).doc(id).delete().catch(console.error);
 }
 
 // ── Patch DB methods ───────────────────────────────────
@@ -113,11 +90,9 @@ DB.toggle = function(key, id, field = 'done') {
 
 DB.set = function(key, val) {
   _rawSet(key, val);
-  if (!_root) return;
+  if (!_db) return;
   if (Array.isArray(val)) {
     val.forEach(item => { if (item?.id) cloudWrite(key, item); });
-  } else if (val && typeof val === 'object') {
-    _root.get(key).put(toGun(val));
   }
 };
 
@@ -125,33 +100,50 @@ DB.set = function(key, val) {
 const SYNC_COLS = ['tasks', 'finance', 'leads'];
 
 function startListeners() {
-  if (_listening || !_root) return;
-  _listening = true;
+  // Unsubscribe old listeners
+  _unsubscribers.forEach(fn => fn());
+  _unsubscribers = [];
 
   SYNC_COLS.forEach(col => {
-    _root.get(col).map().on((raw, id) => {
-      if (!raw || raw._deleted) return;
-      const item = fromGun(raw);
-      if (!item?.id) return;
-
-      const local = DB.get(col);
-      const idx   = local.findIndex(x => x.id === item.id);
-      if (idx === -1) local.unshift(item);
-      else local[idx] = { ...local[idx], ...item };
-      local.sort((a, b) => new Date(b.createdAt||0) - new Date(a.createdAt||0));
-      _rawSet(col, local);
-      scheduleRender();
+    const unsub = colRef(col).onSnapshot(snapshot => {
+      snapshot.docChanges().forEach(change => {
+        if (change.type === 'removed') {
+          _rawSet(col, DB.get(col).filter(x => x.id !== change.doc.id));
+          return;
+        }
+        const item = change.doc.data();
+        if (!item?.id) return;
+        const local = DB.get(col);
+        const idx = local.findIndex(x => x.id === item.id);
+        if (idx === -1) local.unshift(item);
+        else local[idx] = { ...local[idx], ...item };
+        local.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+        _rawSet(col, local);
+      });
+      clearTimeout(window._rdTimer);
+      window._rdTimer = setTimeout(() => {
+        if (typeof renderPage === 'function' && typeof State !== 'undefined') {
+          renderPage(State.page);
+        }
+      }, 350);
+    }, err => {
+      console.warn('Firestore listener error:', err);
+      updateSyncIcon('🟡');
     });
+    _unsubscribers.push(unsub);
   });
+}
 
-  _root.get('arbox_settings').on(raw => {
-    const val = fromGun(raw);
-    if (val?.url !== undefined) localStorage.setItem('arbox_settings', JSON.stringify(val));
+// ── Upload existing local data to Firestore ────────────
+function uploadLocalData() {
+  SYNC_COLS.forEach(col => {
+    const items = DB.get(col);
+    items.forEach(item => { if (item?.id) cloudWrite(col, item); });
   });
 }
 
 // ── Online / offline ───────────────────────────────────
-window.addEventListener('online',  () => { updateSyncIcon('🟢'); if (!_root) initCloud(); });
+window.addEventListener('online',  () => { updateSyncIcon('🟢'); if (!_db) initCloud(); });
 window.addEventListener('offline', () => updateSyncIcon('🟡'));
 
 function updateSyncIcon(icon) {
@@ -171,6 +163,7 @@ function showWorkspaceInfo() {
       padding:20px;background:var(--bg);border-radius:16px;margin-bottom:14px;
       font-family:monospace">${code}</div>
     <button class="btn-primary" style="margin-bottom:10px" onclick="copyWsCode()">📋 העתק קוד</button>
+    <button class="btn-secondary" style="margin-bottom:10px" onclick="uploadLocalData();showToast('✅ נתונים הועלו לענן!')">☁️ העלה נתונים קיימים לענן</button>
 
     <div class="divider"></div>
     <div style="font-size:14px;font-weight:600;margin-bottom:8px">הצטרף לסביבה אחרת</div>
@@ -182,7 +175,7 @@ function showWorkspaceInfo() {
 
     <div style="margin-top:14px;padding:12px;background:var(--bg);border-radius:12px;
       font-size:12px;color:var(--text-3)">
-      🌐 מחובר לענן · הנתונים מסתנכרנים בין כל המכשירים עם אותו קוד
+      🔥 מחובר ל-Firebase · הנתונים שמורים בענן של Google לצמיתות
     </div>
   `);
 }
@@ -198,9 +191,8 @@ function joinWorkspace() {
   const raw = document.getElementById('join-code-input')?.value?.trim().toUpperCase();
   if (!raw || raw.length < 5) { showToast('קוד לא תקין'); return; }
   if (!confirm(`להצטרף לסביבה "${raw}"?`)) return;
-  _listening = false;
+  _wsCode = raw;
   localStorage.setItem('_wsCode', raw);
-  _root = _gun.get('cmd-bux-' + raw);
   closeModal();
   startListeners();
   showToast('✅ מחובר לסביבה ' + raw);
