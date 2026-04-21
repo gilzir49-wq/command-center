@@ -1156,6 +1156,41 @@ html, body {
 .notif-status.on  { background: #34C75918; color: #34C759; }
 .notif-status.off { background: #FF3B3018; color: #FF3B30; }
 
+/* ===== Update banner ===== */
+#update-banner {
+  position: fixed;
+  top: calc(var(--header-h) + var(--safe-top) + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1C1C1E;
+  color: #fff;
+  padding: 10px 16px;
+  border-radius: 20px;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 400;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+  white-space: nowrap;
+  animation: slideDown .3s ease-out;
+}
+#update-banner button {
+  background: var(--c-home);
+  color: #fff;
+  border: none;
+  padding: 6px 14px;
+  border-radius: 14px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+}
+@keyframes slideDown {
+  from { opacity: 0; transform: translateX(-50%) translateY(-12px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
 /* ===== Scrollbar hidden ===== */
 ::-webkit-scrollbar { width: 0; height: 0; }
 

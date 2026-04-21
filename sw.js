@@ -1,4 +1,4 @@
-const CACHE = 'command-center-v6';
+const CACHE = 'command-center-v7';
 const ASSETS = [
   './',
   './index.html',
@@ -13,7 +13,8 @@ const ASSETS = [
 
 self.addEventListener('install', e => {
   e.waitUntil(
-    caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting())
+    caches.open(CACHE).then(c => c.addAll(ASSETS))
+    // לא קוראים ל-skipWaiting כאן — נחכה לאישור המשתמש
   );
 });
 
@@ -23,6 +24,11 @@ self.addEventListener('activate', e => {
       .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
       .then(() => self.clients.claim())
   );
+});
+
+// ── הודעה מהאפליקציה: "אשרתי — עדכן עכשיו" ────────────
+self.addEventListener('message', e => {
+  if (e.data === 'SKIP_WAITING') self.skipWaiting();
 });
 
 self.addEventListener('fetch', e => {

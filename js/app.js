@@ -1688,10 +1688,44 @@ function init() {
   document.getElementById('modal-backdrop').addEventListener('click', closeModal);
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+    navigator.serviceWorker.register('sw.js').then(reg => {
+      // גרסה חדשה ממתינה — הצג באנר
+      const showUpdateBanner = () => {
+        if (document.getElementById('update-banner')) return;
+        const banner = document.createElement('div');
+        banner.id = 'update-banner';
+        banner.innerHTML = `
+          <span>🔄 גרסה חדשה זמינה!</span>
+          <button onclick="applyUpdate()">עדכן עכשיו</button>
+        `;
+        document.body.appendChild(banner);
+      };
+
+      if (reg.waiting) showUpdateBanner();
+      reg.addEventListener('updatefound', () => {
+        const nw = reg.installing;
+        nw.addEventListener('statechange', () => {
+          if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+            showUpdateBanner();
+          }
+        });
+      });
+
+      // אחרי שה-SW החדש תפס שליטה — רענן
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!refreshing) { refreshing = true; location.reload(); }
+      });
+    }).catch(() => {});
   }
 
   navigate('home');
+}
+
+function applyUpdate() {
+  navigator.serviceWorker.ready.then(reg => {
+    if (reg.waiting) reg.waiting.postMessage('SKIP_WAITING');
+  });
 }
 
 document.addEventListener('DOMContentLoaded', init);
