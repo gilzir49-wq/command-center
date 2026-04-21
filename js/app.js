@@ -8,6 +8,7 @@ const State = {
   familyCat: 'tasks',
   finTab: 'summary',
   finPeriod: 'month',
+  finNavMonth: new Date().toISOString().slice(0, 7),
 };
 
 // ── Date Helpers ───────────────────────────────────────
@@ -143,6 +144,15 @@ function renderHome(el) {
       `).join('')}
     </div>` : ''}
 
+    <!-- Calendar widget -->
+    <div class="card" style="margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div class="card-label" style="margin-bottom:0">📅 יומן — שבוע קרוב</div>
+        <button onclick="openCalendar()" style="background:none;border:none;font-size:13px;color:var(--c-home);font-weight:600;cursor:pointer;padding:0">פתח יומן ›</button>
+      </div>
+      ${renderUpcomingCalendar(tasks)}
+    </div>
+
     <!-- Open tasks -->
     ${openTasks.length ? `
     <div class="card" style="margin-bottom:12px">
@@ -230,6 +240,67 @@ function getGreeting() {
   if (h < 17) return 'צהריים טובים';
   if (h < 21) return 'ערב טוב';
   return 'לילה טוב';
+}
+
+// ── Calendar helpers ───────────────────────────────────
+function openCalendar() {
+  const ua = navigator.userAgent;
+  if (/iPhone|iPad/.test(ua)) {
+    // Try native iOS calendar
+    window.location.href = 'calshow://';
+    setTimeout(() => window.open('https://calendar.google.com/calendar/r', '_blank'), 600);
+  } else {
+    window.open('https://calendar.google.com/calendar/r', '_blank');
+  }
+}
+
+function renderUpcomingCalendar(tasks) {
+  const today = todayStr();
+  const futureDate = new Date();
+  futureDate.setDate(futureDate.getDate() + 14);
+  const futureStr = futureDate.toISOString().split('T')[0];
+
+  const upcoming = tasks
+    .filter(t => !t.done && t.dueDate && t.dueDate >= today && t.dueDate <= futureStr)
+    .sort((a,b) => a.dueDate.localeCompare(b.dueDate));
+
+  if (!upcoming.length) {
+    return `<div style="font-size:13px;color:var(--text-3);text-align:center;padding:8px 0">
+      אין תזכורות בשבועיים הקרובים
+      <div style="margin-top:6px;font-size:12px">הוסף תאריך יעד למשימה כדי לראות אותה כאן</div>
+    </div>`;
+  }
+
+  // Group by date
+  const byDate = {};
+  upcoming.forEach(t => {
+    if (!byDate[t.dueDate]) byDate[t.dueDate] = [];
+    byDate[t.dueDate].push(t);
+  });
+
+  return Object.entries(byDate).map(([date, items]) => {
+    const d = new Date(date + 'T00:00:00');
+    const isToday    = date === today;
+    const tomorrow   = new Date(); tomorrow.setDate(tomorrow.getDate()+1);
+    const isTomorrow = date === tomorrow.toISOString().split('T')[0];
+    const label = isToday ? '⭐ היום' : isTomorrow ? '📌 מחר' : `${DAYS[d.getDay()]}, ${d.getDate()} ב${MONTHS[d.getMonth()]}`;
+    const labelColor = isToday ? 'var(--c-home)' : isTomorrow ? '#FF9500' : 'var(--text-3)';
+    return `
+      <div style="margin-bottom:10px">
+        <div style="font-size:11px;font-weight:700;color:${labelColor};margin-bottom:5px;text-transform:uppercase;letter-spacing:.4px">${label}</div>
+        ${items.map(t => {
+          const pri = PRIORITY_CFG[t.priority];
+          const area = BRAIN_AREAS.find(a => a.key === t.category);
+          return `
+          <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--sep)">
+            <div style="width:8px;height:8px;border-radius:50%;background:${pri?.color||'var(--text-3)'};flex-shrink:0"></div>
+            <div style="font-size:13px;flex:1;line-height:1.3">${esc(t.text)}</div>
+            ${t.reminderTime ? `<span style="font-size:11px;color:var(--text-3)">${t.reminderTime}</span>` : ''}
+            ${area ? `<span style="font-size:11px;color:${area.color}">${area.emoji}</span>` : ''}
+          </div>`;
+        }).join('')}
+      </div>`;
+  }).join('');
 }
 
 // ── BRAIN — Things 3 inspired ─────────────────────────
@@ -364,6 +435,7 @@ function brainTaskHTML(t, areaColor, showArea = false) {
         </div>
       </div>
       <div class="brain-task-actions" onclick="event.stopPropagation()">
+        <button class="action-mini" onclick="openEditTask('${t.id}')">✏️</button>
         ${t.dueDate ? `<button class="action-mini" onclick="exportToCalendar('${t.id}')">📅</button>` : ''}
         <button class="del-btn" onclick="deleteTask('${t.id}')">×</button>
       </div>
@@ -412,17 +484,34 @@ function getFinPeriodData(all, period) {
   return all.filter(f => f.date && f.date.startsWith(month));
 }
 
+function finNavPrev() {
+  const [y, m] = State.finNavMonth.split('-').map(Number);
+  const d = new Date(y, m - 2, 1);
+  State.finNavMonth = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  renderPage('finance');
+}
+
+function finNavNext() {
+  const [y, m] = State.finNavMonth.split('-').map(Number);
+  const d = new Date(y, m, 1);
+  State.finNavMonth = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  renderPage('finance');
+}
+
 function renderFinance(el) {
-  const tab    = State.finTab    || 'summary';
-  const period = State.finPeriod || 'month';
+  const tab = State.finTab || 'summary';
+  if (!State.finNavMonth) State.finNavMonth = new Date().toISOString().slice(0,7);
+  const navMonth = State.finNavMonth;
+  const [year, month] = navMonth.split('-').map(Number);
+  const monthLabel = `${MONTHS[month-1]} ${year}`;
+  const isCurrentMonth = navMonth === new Date().toISOString().slice(0,7);
 
   el.innerHTML = `
     <div style="padding:0 16px 0">
-      <div class="fin-period-bar">
-        <button class="fin-period-btn ${period==='week'?'active':''}"
-          onclick="State.finPeriod='week'; renderPage('finance')">השבוע</button>
-        <button class="fin-period-btn ${period==='month'?'active':''}"
-          onclick="State.finPeriod='month'; renderPage('finance')">החודש</button>
+      <div class="fin-month-nav">
+        <button class="fin-nav-arrow" onclick="finNavPrev()">‹</button>
+        <div class="fin-month-label">${monthLabel}</div>
+        <button class="fin-nav-arrow" onclick="finNavNext()" ${isCurrentMonth ? 'disabled style="opacity:.3"' : ''}>›</button>
       </div>
       <div class="fin-tab-bar">
         <button class="fin-tab-btn ${tab==='summary'?'active':''}"
@@ -438,9 +527,9 @@ function renderFinance(el) {
 
   const body     = document.getElementById('fin-body');
   const all      = DB.get('finance');
-  const filtered = getFinPeriodData(all, period);
+  const filtered = all.filter(f => f.date && f.date.startsWith(navMonth));
 
-  if (tab === 'summary')       renderFinSummary(body, filtered, period);
+  if (tab === 'summary')       renderFinSummary(body, filtered, navMonth);
   else if (tab === 'expenses') renderFinTransactions(body, filtered.filter(f => f.type==='expense'), 'expense');
   else                         renderFinTransactions(body, filtered.filter(f => f.type==='income'),  'income');
 }
@@ -501,7 +590,7 @@ function renderFinSummary(el, data, period) {
   el.innerHTML = `
     <div class="fin-hero">
       <div class="fin-hero-amount">₪${totalExp.toLocaleString('he-IL')}</div>
-      <div class="fin-hero-label">הוצאות ה${period==='week'?'שבוע':'חודש'}</div>
+      <div class="fin-hero-label">הוצאות החודש</div>
       <div class="fin-hero-mini">
         <span style="color:#34C759">+₪${totalInc.toLocaleString('he-IL')} הכנסות</span>
         <span style="color:${balance>=0?'#34C759':'#FF3B30'};font-weight:600">${balance>=0?'+':''}₪${balance.toLocaleString('he-IL')} מאזן</span>
@@ -549,16 +638,23 @@ function finRowHTML(f, showDelete = false) {
   const isExp = f.type === 'expense';
   const bg    = isExp ? '#FF3B3015' : '#34C75915';
   const amtCl = isExp ? '#FF3B30'   : '#34C759';
+  const fmtDate = f.date ? (() => {
+    const d = new Date(f.date + 'T00:00:00');
+    return `${d.getDate()} ב${MONTHS[d.getMonth()]}`;
+  })() : '';
   return `
     <div class="fin-item">
       <div class="fin-icon" style="background:${bg};font-size:20px">${cat.emoji}</div>
       <div class="fin-info">
         <div class="fin-name">${esc(f.description)}</div>
-        <div class="fin-date">${cat.name} · ${shortDate(f.date)}</div>
+        <div class="fin-date">${cat.name}${fmtDate ? ' · ' + fmtDate : ''}</div>
       </div>
-      <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
-        <span style="font-size:16px;font-weight:700;color:${amtCl};direction:ltr">${isExp?'−':'+'}₪${f.amount.toLocaleString('he-IL')}</span>
-        ${showDelete ? `<button onclick="deleteFinance('${f.id}')" style="background:none;border:none;color:#FF3B30;font-size:18px;cursor:pointer;padding:4px;line-height:1">🗑</button>` : ''}
+      <div style="display:flex;align-items:center;gap:2px;flex-shrink:0">
+        <span style="font-size:15px;font-weight:700;color:${amtCl};direction:ltr">${isExp?'−':'+'}₪${f.amount.toLocaleString('he-IL')}</span>
+        ${showDelete ? `
+          <button onclick="event.stopPropagation();openEditFinance('${f.id}')" style="background:none;border:none;color:#007AFF;font-size:15px;cursor:pointer;padding:4px 3px">✏️</button>
+          <button onclick="event.stopPropagation();deleteFinance('${f.id}')" style="background:none;border:none;color:#FF3B30;font-size:18px;cursor:pointer;padding:4px 2px;line-height:1">🗑</button>
+        ` : ''}
       </div>
     </div>`;
 }
@@ -843,6 +939,112 @@ function toggleTask(id) {
 function deleteTask(id) {
   DB.remove('tasks', id);
   renderPage(State.page);
+}
+
+// ── Edit Task ──────────────────────────────────────────
+function openEditTask(id) {
+  const t = DB.get('tasks').find(x => x.id === id);
+  if (!t) return;
+  openModal(`
+    <div class="modal-title">✏️ עריכת משימה</div>
+    <div class="form-group">
+      <label class="form-label">טקסט</label>
+      <textarea class="form-textarea" id="edit-task-text">${esc(t.text)}</textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label">אזור</label>
+      <div class="brain-area-pick-grid" id="edit-cat-chips">
+        ${[['business','💼','עסק'],['home','🏠','בית'],['personal','👤','אישי'],['idea','💡','רעיון']].map(([k,e,l]) =>
+          `<button class="brain-area-pick ${k===t.category?'sel':''}"
+            onclick="document.querySelectorAll('#edit-cat-chips .brain-area-pick').forEach(b=>b.classList.remove('sel'));this.classList.add('sel')"
+            data-val="${k}"><span style="font-size:22px">${e}</span><span>${l}</span></button>`
+        ).join('')}
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">עדיפות</label>
+      <div class="chip-row" id="edit-pri-chips">
+        ${[['high','🔴 דחוף'],['medium','🟡 בינוני'],['low','🟢 נמוך']].map(([k,l]) =>
+          `<button class="chip ${k===t.priority?'sel':''}"
+            onclick="document.querySelectorAll('#edit-pri-chips .chip').forEach(b=>b.classList.remove('sel'));this.classList.add('sel')"
+            data-val="${k}">${l}</button>`
+        ).join('')}
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">תאריך יעד</label>
+        <input class="form-input" id="edit-task-date" type="date" value="${t.dueDate||''}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">שעה</label>
+        <input class="form-input" id="edit-task-time" type="time" value="${t.reminderTime||'09:00'}">
+      </div>
+    </div>
+    <button class="btn-primary" onclick="saveEditTask('${id}')">✅ שמור</button>
+  `);
+  setTimeout(() => document.getElementById('edit-task-text')?.focus(), 150);
+}
+
+function saveEditTask(id) {
+  const text = document.getElementById('edit-task-text').value.trim();
+  if (!text) { showToast('נא להזין טקסט'); return; }
+  const cat  = document.querySelector('#edit-cat-chips .sel')?.dataset.val;
+  const pri  = document.querySelector('#edit-pri-chips .sel')?.dataset.val;
+  const dueDate     = document.getElementById('edit-task-date').value || null;
+  const reminderTime = document.getElementById('edit-task-time').value || null;
+  DB.update('tasks', id, { text, category: cat, priority: pri, dueDate, reminderTime });
+  closeModal();
+  renderPage(State.page);
+  showToast('✅ משימה עודכנה');
+}
+
+// ── Edit Finance ───────────────────────────────────────
+function openEditFinance(id) {
+  const f = DB.get('finance').find(x => x.id === id);
+  if (!f) return;
+  const cats = f.type === 'expense' ? FIN_EXP_CATS : FIN_INC_CATS;
+  openModal(`
+    <div class="modal-title">✏️ עריכת עסקה</div>
+    <div class="form-group">
+      <label class="form-label">תיאור</label>
+      <input class="form-input" id="edit-fin-desc" value="${esc(f.description)}">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">סכום (₪)</label>
+        <input class="form-input" id="edit-fin-amount" type="number" inputmode="decimal" value="${f.amount}" dir="ltr">
+      </div>
+      <div class="form-group">
+        <label class="form-label">תאריך</label>
+        <input class="form-input" id="edit-fin-date" type="date" value="${f.date||todayStr()}">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">קטגוריה</label>
+      <div class="fin-cat-pick-grid" id="edit-fin-cats">
+        ${cats.map(c => `
+          <button class="fin-cat-pick ${c.id===f.category?'sel':''}" data-val="${c.id}"
+            onclick="document.querySelectorAll('#edit-fin-cats .fin-cat-pick').forEach(b=>b.classList.remove('sel'));this.classList.add('sel')">
+            <span style="font-size:20px">${c.emoji}</span><span>${c.name}</span>
+          </button>`).join('')}
+      </div>
+    </div>
+    <button class="btn-primary" onclick="saveEditFinance('${id}')">✅ שמור</button>
+  `);
+  setTimeout(() => document.getElementById('edit-fin-desc')?.focus(), 150);
+}
+
+function saveEditFinance(id) {
+  const desc   = document.getElementById('edit-fin-desc').value.trim();
+  const amount = parseFloat(document.getElementById('edit-fin-amount').value);
+  if (!desc || !amount) { showToast('נא למלא תיאור וסכום'); return; }
+  const category = document.querySelector('#edit-fin-cats .sel')?.dataset.val;
+  const date     = document.getElementById('edit-fin-date').value || todayStr();
+  DB.update('finance', id, { description: desc, amount, category, date });
+  closeModal();
+  renderPage(State.page);
+  showToast('✅ עסקה עודכנה');
 }
 
 function emptyHTML(icon, text) {
@@ -1134,9 +1336,15 @@ function openAddFinance() {
       <label class="form-label">תיאור</label>
       <input class="form-input" id="fin-desc" placeholder="לדוגמה: קפה בוקר">
     </div>
-    <div class="form-group">
-      <label class="form-label">סכום (₪)</label>
-      <input class="form-input" id="fin-amount" type="number" inputmode="decimal" placeholder="0" dir="ltr">
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">סכום (₪)</label>
+        <input class="form-input" id="fin-amount" type="number" inputmode="decimal" placeholder="0" dir="ltr">
+      </div>
+      <div class="form-group">
+        <label class="form-label">תאריך</label>
+        <input class="form-input" id="fin-date" type="date" value="${todayStr()}">
+      </div>
     </div>
     <div class="form-group">
       <label class="form-label">קטגוריה</label>
@@ -1166,7 +1374,8 @@ function saveFinance() {
   if (!desc || !amount) { showToast('נא למלא תיאור וסכום'); return; }
   const type     = document.querySelector('#fin-type-chips .sel')?.dataset.val || 'expense';
   const category = document.querySelector('.fin-cat-pick.sel')?.dataset.val || (type==='expense' ? 'personal' : 'other_inc');
-  DB.add('finance', { description: desc, amount, type, category, date: todayStr(), isPaid: true });
+  const date     = document.getElementById('fin-date')?.value || todayStr();
+  DB.add('finance', { description: desc, amount, type, category, date, isPaid: true });
   closeModal();
   renderPage('finance');
   showToast('✅ נשמר!');

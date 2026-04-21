@@ -485,6 +485,37 @@ html, body {
 }
 
 /* ===== Finance (redesigned) ===== */
+.fin-month-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 0 4px;
+}
+.fin-month-label {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+}
+.fin-nav-arrow {
+  width: 40px;
+  height: 40px;
+  border: none;
+  background: var(--bg-card);
+  border-radius: 50%;
+  font-size: 24px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 4px var(--shadow);
+  color: var(--c-finance);
+  font-weight: 700;
+  transition: transform .15s;
+}
+.fin-nav-arrow:active { transform: scale(.9); }
+.fin-nav-arrow:disabled { opacity: .3; cursor: default; }
+
+/* Legacy period bar — keep for compatibility */
 .fin-period-bar {
   display: flex;
   gap: 8px;
@@ -984,6 +1015,22 @@ html, body {
 }
 
 .btn-primary:active { opacity: 0.82; }
+
+.btn-secondary {
+  width: 100%;
+  padding: 13px;
+  border-radius: 14px;
+  border: 1.5px solid var(--sep);
+  background: transparent;
+  color: var(--text-2);
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s;
+  margin-top: 4px;
+}
+.btn-secondary:active { background: var(--bg); }
 
 /* ===== Icon buttons ===== */
 .icon-btn {
