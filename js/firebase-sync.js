@@ -201,5 +201,30 @@ function joinWorkspace() {
 
 function openCloudSetup() { showWorkspaceInfo(); }
 
+// ── Load Google Calendar events — REST API (bypasses SDK cache) ──
+const _GCAL_REST =
+  'https://firestore.googleapis.com/v1/projects/command-center-gal' +
+  '/databases/(default)/documents/gcal_cache/events' +
+  '?key=AIzaSyAC6oiLElA2CbosGkUDM5rJsq7q3DuMzpM';
+
+function loadGcalEvents(callback) {
+  fetch(_GCAL_REST)
+    .then(r => r.json())
+    .then(doc => {
+      const values = doc?.fields?.events?.arrayValue?.values ?? [];
+      const events = values.map(v => {
+        const f = v.mapValue?.fields ?? {};
+        return {
+          date:    f.date?.stringValue    ?? '',
+          time:    f.time?.stringValue    ?? '',
+          endTime: f.endTime?.stringValue ?? '',
+          title:   f.title?.stringValue   ?? '',
+        };
+      }).filter(e => e.date && e.title);
+      callback(events);
+    })
+    .catch(() => callback([]));
+}
+
 // ── Boot ──────────────────────────────────────────────
 initCloud();
