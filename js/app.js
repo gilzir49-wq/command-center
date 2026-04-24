@@ -560,6 +560,58 @@ function openCalmHistory() {
 }
 
 // ── Calendar helpers ───────────────────────────────────
+// ── Google Calendar event remove menu ─────────────────
+function gcalEventMenu(safeKey) {
+  const key = decodeURIComponent(safeKey);
+  const title = key.split('|')[1] || key;
+  openModal(`
+    <div class="modal-title">📅 ${esc(title)}</div>
+    <p style="font-size:14px;color:var(--text-3);margin-bottom:18px">מה תרצה לעשות עם האירוע הזה?</p>
+    <button class="btn-secondary" style="margin-bottom:10px;width:100%" onclick="gcalHide('${safeKey}')">
+      🙈 הסתר רק מהתצוגה כאן
+    </button>
+    <button class="btn-primary" style="width:100%;--btn-color:#EF5350" onclick="gcalDeleteFromGoogle('${safeKey}')">
+      🗑️ מחק גם מגוגל קלנדר
+    </button>
+    <button class="btn-secondary" style="margin-top:8px;width:100%" onclick="closeModal()">ביטול</button>
+  `);
+}
+
+function gcalHide(safeKey) {
+  const key = decodeURIComponent(safeKey);
+  const hidden = JSON.parse(localStorage.getItem('_gcal_hidden') || '[]');
+  if (!hidden.includes(key)) hidden.push(key);
+  localStorage.setItem('_gcal_hidden', JSON.stringify(hidden));
+  _gcalEvents = _gcalEvents.filter(e => (e.date + '|' + e.title) !== key);
+  closeModal();
+  renderPage('home');
+  showToast('🙈 האירוע הוסתר');
+}
+
+function gcalDeleteFromGoogle(safeKey) {
+  const key = decodeURIComponent(safeKey);
+  // Hide locally
+  gcalHide(safeKey);
+  // Also remove from Firebase cache so it won't come back on next refresh
+  const remaining = _gcalEvents; // already filtered by gcalHide above
+  const values = remaining.map(e => ({
+    mapValue: { fields: {
+      date:    { stringValue: e.date },
+      time:    { stringValue: e.time || '' },
+      endTime: { stringValue: e.endTime || '' },
+      title:   { stringValue: e.title },
+    }}
+  }));
+  fetch('https://firestore.googleapis.com/v1/projects/command-center-gal/databases/(default)/documents/gcal_cache/events?key=AIzaSyAC6oiLElA2CbosGkUDM5rJsq7q3DuMzpM', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fields: { events: { arrayValue: { values } } } }),
+  }).catch(() => {});
+  // Open Google Calendar so user can delete it there too
+  setTimeout(() => window.open('https://calendar.google.com/calendar/r', '_blank'), 300);
+  showToast('🗑️ הוסר מהתצוגה — גוגל קלנדר נפתח למחיקה');
+}
+
 function refreshGcal() {
   const btn = document.getElementById('gcal-refresh-btn');
   if (btn) {
@@ -604,15 +656,18 @@ function renderUpcomingCalendar(tasks) {
       category: t.category,
     }));
 
-  // ── Google Calendar items ─────────────────────────────
+  // ── Google Calendar items (filter hidden) ────────────
+  const _hiddenGcal = JSON.parse(localStorage.getItem('_gcal_hidden') || '[]');
   const gcalItems = _gcalEvents
     .filter(e => e.date && e.date >= today && e.date <= futureStr)
+    .filter(e => !_hiddenGcal.includes(e.date + '|' + e.title))
     .map(e => ({
       date: e.date,
       time: e.time || '',
       endTime: e.endTime || '',
       title: e.title,
       type: 'gcal',
+      key: e.date + '|' + e.title,
     }));
 
   // ── Merge & sort by date then time ───────────────────
@@ -652,11 +707,13 @@ function renderUpcomingCalendar(tasks) {
         ${items.map(item => {
           if (item.type === 'gcal') {
             const timeStr = item.time ? `${item.time}${item.endTime ? '–'+item.endTime : ''}` : '';
+            const safeKey = encodeURIComponent(item.key);
             return `
             <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--sep)">
               <span style="font-size:13px;flex-shrink:0">📅</span>
               <div style="font-size:13px;flex:1;line-height:1.3">${esc(item.title)}</div>
-              ${timeStr ? `<span style="font-size:11px;color:var(--text-3);direction:ltr">${timeStr}</span>` : ''}
+              ${timeStr ? `<span style="font-size:11px;color:var(--text-3);direction:ltr;flex-shrink:0">${timeStr}</span>` : ''}
+              <button onclick="gcalEventMenu('${safeKey}')" style="background:none;border:none;font-size:15px;color:var(--text-3);cursor:pointer;padding:0 0 0 4px;flex-shrink:0;line-height:1" title="הסר">✕</button>
             </div>`;
           } else {
             const pri = PRIORITY_CFG[item.priority];
